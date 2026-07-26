@@ -17,6 +17,11 @@ echo "Creating persistent directories..."
 sudo mkdir -p /opt/frappe/mariadb
 sudo mkdir -p /opt/frappe/sites
 
+# Create the initial Frappe config if it doesn't exist
+if [ ! -f /opt/frappe/sites/common_site_config.json ]; then
+    echo "{}" | sudo tee /opt/frappe/sites/common_site_config.json >/dev/null
+fi
+
 MARIADB_IMAGE=${MARIADB_IMAGE:-mariadb:11.8}
 
 MYSQL_UID=$(docker run --rm ${MARIADB_IMAGE} id -u mysql)
