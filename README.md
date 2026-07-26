@@ -330,9 +330,11 @@ Create site
 
 ```bash
 docker compose exec backend \
-bench new-site tic.pkdevops.online \
+bench new-site \
 --db-root-password 123 \
---admin-password Admin@123
+--admin-password Admin@123 \
+--mariadb-user-host-login-scope="%" \
+tic.pkdevops.online
 ```
 
 When prompted
