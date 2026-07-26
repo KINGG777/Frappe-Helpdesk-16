@@ -24,15 +24,33 @@ services:
       - bash
       - -c
     # add redis_socketio for backward compatibility
+    services:
+  configurator:
+    <<: *backend_defaults
+    platform: linux/amd64
+    entrypoint:
+      - bash
+      - -c
     command:
       - >
+        mkdir -p sites;
+
+        [ -f sites/common_site_config.json ] || echo "{}" > sites/common_site_config.json;
+
         ls -1 apps > sites/apps.txt;
+
         bench set-config -g db_host $$DB_HOST;
+
         bench set-config -gp db_port $$DB_PORT;
+
         bench set-config -g redis_cache "redis://$$REDIS_CACHE";
+
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
+
         bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
+
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
+
         bench set-config -g chromium_path /usr/bin/chromium-headless-shell;
     environment:
       DB_HOST: ${DB_HOST:-}
