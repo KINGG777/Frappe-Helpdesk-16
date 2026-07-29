@@ -1,73 +1,62 @@
-# Frappe Helpdesk v16 Deployment on Ubuntu 24.04
+# Frappe Helpdesk v16 on Ubuntu 24.04
 
-Deploy **Frappe Helpdesk v16** on **Ubuntu 24.04** using **Docker**, **Apache Reverse Proxy**, and **Let's Encrypt SSL**.
+Deploy **Frappe Framework v16** with **Helpdesk** and **Telephony** using Docker, Apache Reverse Proxy and Let's Encrypt SSL.
 
 ---
 
-# Environment
+## Prerequisites
 
 - Ubuntu 24.04 LTS
-- Docker Engine
-- Docker Compose v2
-- Apache2
-- MariaDB
-- Redis
-- Custom Docker Image
-- Frappe Helpdesk v16
+- 4 GB RAM (8 GB Recommended)
+- Domain/Subdomain pointing to your EC2 instance
+- Sudo privileges
 
 ---
 
-# Prerequisites
+# 1. Install Required Packages
 
-- Ubuntu 24.04 Server
-- Domain pointing to your EC2 Public IP
-- Root or sudo access
-
-## Required Ports
-
-| Port | Purpose |
-|------|----------|
-| 22 | SSH |
-| 80 | HTTP |
-| 443 | HTTPS |
-
----
-
-# Step 1 - Install Required Packages
-
-Update the server.
+Update the server, install Apache, Certbot, Git and Docker from the official Docker repository.
 
 ```bash
-sudo apt update && sudo apt upgrade -y
-```
+sudo apt update
 
-Install required packages.
-
-```bash
 sudo apt install -y \
-docker.io \
-docker-compose-v2 \
 git \
 apache2 \
 certbot \
 python3-certbot-apache
+
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc docker-buildx podman-docker containerd runc | cut -f1)
+
+sudo apt install ca-certificates curl
+
+sudo install -m 0755 -d /etc/apt/keyrings
+
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+-o /etc/apt/keyrings/docker.asc
+
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+
+sudo apt install -y \
+docker-ce \
+docker-ce-cli \
+containerd.io \
+docker-buildx-plugin \
+docker-compose-plugin
 ```
 
-Enable Docker.
-
-```bash
-sudo systemctl enable docker
-sudo systemctl start docker
-```
-
-Add your user to the Docker group.
-
-```bash
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-## Verify Installation
+Verify installation.
 
 ```bash
 echo "Docker: $(docker --version)"
@@ -76,125 +65,93 @@ echo "Git: $(git --version)"
 echo "Apache: $(apache2 -v | head -1)"
 echo "Certbot: $(certbot --version)"
 echo "Docker Service: $(systemctl is-active docker)"
-```
-
-Expected:
-
-```
-Docker: Docker version ...
-Compose: Docker Compose version ...
-Git: git version ...
-Apache: Server version: Apache...
-Certbot: certbot ...
-Docker Service: active
+echo "Docker Buildx: $(docker buildx version)"
 ```
 
 ---
 
-# Step 2 - Clone Repository
+# 2. Configure Docker
 
-Clone the repository.
-
-```bash
-git clone https://github.com/frappe/frappe_docker.git
-```
-
-Move into the project.
+Enable Docker at boot and allow the current user to run Docker commands without sudo.
 
 ```bash
-cd frappe_docker
-```
+sudo systemctl enable docker
+sudo systemctl start docker
 
-Verify.
-
-```bash
-ls
-```
-
-Expected:
-
-```
-compose.yaml
-example.env
-images/
-overrides/
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 ---
 
-# Step 3 - Configure Environment
+# 3. Clone the Repository
 
-Copy the example environment file.
-
-```bash
-cp example.env .env
-```
-
-Edit the configuration.
+Clone the project and create the required Docker volumes.
 
 ```bash
-nano .env
-```
+git clone https://github.com/KINGG777/Frappe-Helpdesk-16.git
 
-Update only these values.
+cd Frappe-Helpdesk-16
 
-```env
-ERPNEXT_VERSION=v16.29.0
-
-CUSTOM_IMAGE=kingg777/frappe-helpdesk
-CUSTOM_TAG=16
-PULL_POLICY=always
-
-DB_PASSWORD=123
-
-HTTP_PUBLISH_PORT=8080
-```
-
-Save and exit.
-
-```
-CTRL + O
-ENTER
-CTRL + X
-```
-
-Verify.
-
-```bash
-cat .env
-```
-
-Expected:
-
-```env
-CUSTOM_IMAGE=kingg777/frappe-helpdesk
-CUSTOM_TAG=16
-HTTP_PUBLISH_PORT=8080
+sh storage.sh
 ```
 
 ---
 
-# Step 4 - Pull Custom Image
+# 4. Configure Applications
+
+Edit the `apps.json` file to include the Helpdesk and Telephony applications that will be bundled into the custom Docker image.
 
 ```bash
-docker pull kingg777/frappe-helpdesk:16
+vi apps.json
 ```
 
-Verify.
+Replace the contents with:
 
-```bash
-docker images
-```
-
-Expected:
-
-```
-kingg777/frappe-helpdesk
+```json
+[
+  {
+    "url": "https://github.com/frappe/telephony",
+    "branch": "develop"
+  },
+  {
+    "url": "https://github.com/frappe/helpdesk",
+    "branch": "main"
+  }
+]
 ```
 
 ---
 
-# Step 5 - Start Containers
+# 5. Build the Custom Image
+
+Build a custom Frappe v16 image with the required applications.
+
+```bash
+docker build --no-cache \
+  --build-arg CACHE_BUST=$(date +%s) \
+  --build-arg FRAPPE_PATH=https://github.com/frappe/frappe \
+  --build-arg FRAPPE_BRANCH=version-16 \
+  --secret id=apps_json,src=apps.json \
+  -t custom:16 \
+  -f images/layered/Containerfile .
+```
+
+---
+
+# 6. Configure Environment
+
+Open the `.env` file and replace the default image with:
+
+```
+CUSTOM_IMAGE=custom:16
+```
+
+---
+
+# 7. Start the Containers
+
+Launch MariaDB, Redis, Proxy and Frappe services.
 
 ```bash
 docker compose \
@@ -203,147 +160,71 @@ docker compose \
 -f overrides/compose.redis.yaml \
 -f overrides/compose.proxy.yaml \
 up -d
-```
 
-Verify.
-
-```bash
 docker compose ps
-```
-
-Expected:
-
-```
-backend
-frontend
-db
-redis-cache
-redis-queue
-scheduler
-websocket
-proxy
 ```
 
 ---
 
-# Step 6 - Create Site
+# 8. Create a New Site
+
+Create a Frappe site and configure the Administrator account.
 
 ```bash
 docker compose exec backend \
 bench new-site \
---db-root-password 123 \
+--db-root-password 123456 \
 --admin-password Admin@123 \
 --mariadb-user-host-login-scope="%" \
-tic.pkdevops.online
-```
+helpdesk.pkdevops.online
 
-When prompted:
-
-```
-Enter mysql super user [root]:
-```
-
-Press **ENTER**.
-
-When prompted:
-
-```
-MySQL root password:
-```
-
-Enter:
-
-```
-123
-```
-
-Verify.
-
-```bash
 docker compose exec backend bench list-sites
 ```
 
-Expected:
+---
 
-```
-tic.pkdevops.online
+# 9. Install Helpdesk
+
+Install the Helpdesk application on the newly created site and verify the installed apps.
+
+```bash
+docker compose exec backend \
+bench --site helpdesk.pkdevops.online install-app helpdesk
+
+docker compose exec backend \
+bench --site helpdesk.pkdevops.online list-apps
 ```
 
 ---
 
-# Step 7 - Install Helpdesk
+# 10. Set the Default Site
+
+Configure the default site and restart the stack.
 
 ```bash
 docker compose exec backend \
-bench --site tic.pkdevops.online install-app helpdesk
-```
+bench set-config -g default_site helpdesk.pkdevops.online
 
-Verify.
-
-```bash
-docker compose exec backend \
-bench --site tic.pkdevops.online list-apps
-```
-
-Expected:
-
-```
-frappe
-telephony
-helpdesk
-```
-
----
-
-# Step 8 - Configure Default Site
-
-```bash
-docker compose exec backend \
-bench set-config -g default_site tic.pkdevops.online
-```
-
-Restart containers.
-
-```bash
 docker compose restart
-```
 
-Verify.
-
-```bash
 docker compose exec backend \
 cat sites/common_site_config.json
 ```
 
-Expected:
+Verify the backend.
 
-```json
-{
-  "default_site": "tic.pkdevops.online"
-}
+```bash
+curl -H "Host: helpdesk.pkdevops.online" http://127.0.0.1:8080
 ```
 
 ---
 
-# Step 9 - Test Local Access
+# 11. Configure Apache Reverse Proxy
+
+Create a new virtual host.
 
 ```bash
-curl -H "Host: tic.pkdevops.online" http://127.0.0.1:8080
-```
-
-Expected:
-
-- HTML response
-- Login page source
-
----
-
-# Step 10 - Configure Apache
-
-Create the Virtual Host.
-
-```bash
-sudo nano /etc/apache2/sites-available/tic.pkdevops.online.conf
+sudo nano /etc/apache2/sites-available/helpdesk.pkdevops.online.conf
 ```
 
 Paste:
@@ -351,450 +232,70 @@ Paste:
 ```apache
 <VirtualHost *:80>
 
-ServerName tic.pkdevops.online
+    ServerName helpdesk.pkdevops.online
 
-ProxyPreserveHost On
+    ProxyPreserveHost On
 
-ProxyPass / http://127.0.0.1:8080/
-ProxyPassReverse / http://127.0.0.1:8080/
+    ProxyPass / http://127.0.0.1:8080/
+    ProxyPassReverse / http://127.0.0.1:8080/
 
-ErrorLog ${APACHE_LOG_DIR}/tic_error.log
-CustomLog ${APACHE_LOG_DIR}/tic_access.log combined
+    ErrorLog ${APACHE_LOG_DIR}/helpdesk_error.log
+    CustomLog ${APACHE_LOG_DIR}/helpdesk_access.log combined
 
 </VirtualHost>
 ```
 
-Enable modules.
+Enable Apache modules and the virtual host.
 
 ```bash
-sudo a2enmod proxy
-sudo a2enmod proxy_http
-sudo a2enmod rewrite
-sudo a2enmod headers
-```
+sudo a2enmod proxy proxy_http rewrite headers
 
-Enable the site.
+sudo a2ensite helpdesk.pkdevops.online.conf
 
-```bash
-sudo a2ensite tic.pkdevops.online.conf
-```
-
-Disable the default site.
-
-```bash
 sudo a2dissite 000-default.conf
-```
 
-Restart Apache.
-
-```bash
 sudo systemctl restart apache2
-```
 
-Verify.
-
-```bash
 apache2ctl -S
 ```
 
-Expected:
-
-```
-ServerName tic.pkdevops.online
-```
-
 ---
 
-# Step 11 - Configure HTTPS
+# 12. Enable HTTPS
 
-Run Certbot.
+Generate a free SSL certificate from Let's Encrypt.
 
 ```bash
 sudo certbot --apache
 ```
 
-Select:
-
-```
-tic.pkdevops.online
-```
-
-Choose:
-
-```
-Redirect HTTP to HTTPS: Yes
-```
-# Final Verification
-
-Verify the deployment.
-
-```bash
-docker compose ps
-
-docker compose exec backend bench list-sites
-
-docker compose exec backend \
-bench --site tic.pkdevops.online list-apps
-
-systemctl is-active apache2
-
-systemctl is-active docker
-
-curl -I https://tic.pkdevops.online
-```
-
-Expected:
-
-```
-All containers running
-tic.pkdevops.online
-frappe
-telephony
-helpdesk
-active
-active
-HTTP/2 200
-```
+Choose your domain and allow automatic HTTP to HTTPS redirection.
 
 ---
 
-# Fixes
-
-## Containers Not Starting
-
-Check logs.
-
-```bash
-docker compose logs
-```
-
-Restart containers.
-
-```bash
-docker compose down
-docker compose up -d
-```
-
----
-
-## Port 8080 Not Exposed
-
-Verify containers.
-
-```bash
-docker compose ps
-```
-
-If the **proxy** container is missing, start the stack again.
-
-```bash
-docker compose \
--f compose.yaml \
--f overrides/compose.mariadb.yaml \
--f overrides/compose.redis.yaml \
--f overrides/compose.proxy.yaml \
-up -d
-```
-
----
-
-## Default Site Not Configured
-
-Error:
+# Access Helpdesk
 
 ```
-127.0.0.1 does not exist
+https://helpdesk.pkdevops.online
 ```
 
-Verify.
-
-```bash
-docker compose exec backend \
-cat sites/common_site_config.json
-```
-
-Expected.
-
-```json
-{
-  "default_site":"tic.pkdevops.online"
-}
-```
-
-Fix.
-
-```bash
-docker compose exec backend \
-bench set-config -g default_site tic.pkdevops.online
-
-docker compose restart
-```
-
-Test again.
-
-```bash
-curl -H "Host: tic.pkdevops.online" http://127.0.0.1:8080
-```
-
----
-
-## 404 Site Does Not Exist
-
-List available sites.
-
-```bash
-docker compose exec backend bench list-sites
-```
-
-If the site is missing, create it again.
-
----
-
-## Wrong Site Created
-
-Drop the site.
-
-```bash
-docker compose exec backend \
-bench drop-site ticket.example.com \
---root-login root \
---root-password 123
-```
-
-Recreate it.
-
-```bash
-docker compose exec backend \
-bench new-site \
---db-root-password 123 \
---admin-password Admin@123 \
---mariadb-user-host-login-scope="%" \
-tic.pkdevops.online
-```
-
----
-
-## 500 Internal Server Error
-
-Check backend logs.
-
-```bash
-docker compose logs backend --tail=100
-```
-
-If you see:
+**Login**
 
 ```
-MySQLdb.OperationalError
-Access denied for user
-```
-
-Verify the MariaDB user.
-
-```bash
-docker compose exec db mariadb -uroot -p123
-```
-
-```sql
-SELECT User, Host
-FROM mysql.user;
-```
-
-Expected:
-
-```
-db_user    %
-```
-
-If the user is created with an IP address instead of `%`, verify the site credentials.
-
-```bash
-docker compose exec backend \
-cat sites/tic.pkdevops.online/site_config.json
-```
-
-Create the MariaDB user again.
-
-```sql
-CREATE USER '_36a698c3bd9f3229'@'%'
-IDENTIFIED BY 'your_password';
-
-GRANT ALL PRIVILEGES
-ON `_36a698c3bd9f3229`.*
-TO '_36a698c3bd9f3229'@'%';
-
-FLUSH PRIVILEGES;
-```
-
-Restart services.
-
-```bash
-docker compose restart backend frontend
-```
-
----
-
-## Wrong Apache Virtual Host
-
-List enabled sites.
-
-```bash
-ls /etc/apache2/sites-enabled
-```
-
-Disable the incorrect site.
-
-```bash
-sudo a2dissite wrong-site.conf
-```
-
-Enable the correct site.
-
-```bash
-sudo a2ensite tic.pkdevops.online.conf
-```
-
-Restart Apache.
-
-```bash
-sudo systemctl restart apache2
-```
-
----
-
-## SSL Certificate Failed (NXDOMAIN)
-
-Check DNS.
-
-```bash
-nslookup tic.pkdevops.online
-```
-
-or
-
-```bash
-dig tic.pkdevops.online
-```
-
-Expected:
-
-```
-EC2 Public IP
-```
-
-If no IP is returned, create an **A Record**.
-
-| Record | Value |
-|--------|-------|
-| Host | tic |
-| Type | A |
-| Value | EC2 Public IP |
-
-Wait for DNS propagation and run Certbot again.
-
-```bash
-sudo certbot --apache
+Username : Administrator
+Password : Admin@123
 ```
 
 ---
 
 # Useful Commands
 
-Restart containers.
-
 ```bash
+docker compose ps
+docker compose logs -f backend
 docker compose restart
-```
-
-Stop containers.
-
-```bash
 docker compose down
-```
-
-Start containers.
-
-```bash
 docker compose up -d
-```
-
-View logs.
-
-```bash
-docker compose logs
-```
-
-Backend logs.
-
-```bash
-docker compose logs backend
-```
-
-Login to MariaDB.
-
-```bash
-docker compose exec db mariadb -uroot -p123
-```
-
-List sites.
-
-```bash
 docker compose exec backend bench list-sites
+docker compose exec backend bench --site helpdesk.pkdevops.online list-apps
 ```
-
-List installed apps.
-
-```bash
-docker compose exec backend \
-bench --site tic.pkdevops.online list-apps
-```
-
-Restart Apache.
-
-```bash
-sudo systemctl restart apache2
-```
-
-Restart Docker.
-
-```bash
-sudo systemctl restart docker
-```
-
----
-
-# Login
-
-**URL**
-
-```
-https://tic.pkdevops.online
-```
-
-**Username**
-
-```
-Administrator
-```
-
-**Password**
-
-```
-Admin@123
-```
-
----
-
-# Deployment Completed
-
-Your deployment is now running with:
-
-- Ubuntu 24.04
-- Docker Engine
-- Docker Compose v2
-- MariaDB
-- Redis
-- Apache Reverse Proxy
-- Let's Encrypt SSL
-- Frappe Helpdesk v16
-- Custom Docker Image
