@@ -8,7 +8,8 @@ services:
       - redis-queue
 
   redis-cache:
-    image: redis:8.6-alpine
+    #image: redis:8.6-alpine
+    image: redis/redis-stack-server:latest
     restart: unless-stopped
 
   redis-queue:
