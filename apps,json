@@ -6,5 +6,9 @@
   {
     "url": "https://github.com/frappe/helpdesk",
     "branch": "main"
+  },
+ {
+    "url": "https://github.com/frappe/erpnext.git",
+    "branch": "version-16"
   }
 ]
