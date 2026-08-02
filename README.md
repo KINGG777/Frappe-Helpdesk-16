@@ -241,8 +241,12 @@ This initializes Helpdesk correctly and rebuilds the Knowledge Base search index
 /api/method/helpdesk.api.article.search
 ```
 
----
+# Enable Server Scripts (Optional)
 
+```bash
+docker compose exec backend \
+bench set-config -g server_script_enabled 1
+```
 # 13. Set Default Site
 
 ```bash
