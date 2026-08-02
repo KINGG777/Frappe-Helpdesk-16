@@ -4,10 +4,11 @@ Deploy **Frappe Framework v16** with **Helpdesk** and **Telephony** using Docker
 
 ---
 
-## Prerequisites
+# Prerequisites
 
 - Ubuntu 24.04 LTS
-- 4 GB RAM (8 GB Recommended)
+- Minimum 4 GB RAM (8 GB Recommended)
+- Minimum 25 GB Storage
 - Domain/Subdomain pointing to your EC2 instance
 - Sudo privileges
 
@@ -15,7 +16,7 @@ Deploy **Frappe Framework v16** with **Helpdesk** and **Telephony** using Docker
 
 # 1. Install Required Packages
 
-Update the server, install Apache, Certbot, Git and Docker from the official Docker repository.
+Update the server and install Apache, Certbot, Git and Docker from the official Docker repository.
 
 ```bash
 sudo apt update
@@ -56,7 +57,9 @@ docker-buildx-plugin \
 docker-compose-plugin
 ```
 
-Verify installation.
+---
+
+# 2. Verify Installation
 
 ```bash
 echo "Docker: $(docker --version)"
@@ -70,9 +73,9 @@ echo "Docker Buildx: $(docker buildx version)"
 
 ---
 
-# 2. Configure Docker
+# 3. Configure Docker
 
-Enable Docker at boot and allow the current user to run Docker commands without sudo.
+Enable Docker and allow the current user to run Docker commands.
 
 ```bash
 sudo systemctl enable docker
@@ -84,9 +87,7 @@ newgrp docker
 
 ---
 
-# 3. Clone the Repository
-
-Clone the project and create the required Docker volumes.
+# 4. Clone Repository
 
 ```bash
 git clone https://github.com/KINGG777/Frappe-Helpdesk-16.git
@@ -98,15 +99,15 @@ sh storage.sh
 
 ---
 
-# 4. Configure Applications
+# 5. Configure Applications
 
-Edit the `apps.json` file to include the Helpdesk and Telephony applications that will be bundled into the custom Docker image.
+Edit the applications that will be bundled into the custom Docker image.
 
 ```bash
 vi apps.json
 ```
 
-Replace the contents with:
+Replace with:
 
 ```json
 [
@@ -123,9 +124,15 @@ Replace the contents with:
 
 ---
 
-# 5. Build the Custom Image
+# 6. Create Environment File
 
-Build a custom Frappe v16 image with the required applications.
+```bash
+cp example.env .env
+```
+
+---
+
+# 7. Build Custom Docker Image
 
 ```bash
 docker build --no-cache \
@@ -139,19 +146,31 @@ docker build --no-cache \
 
 ---
 
-# 6. Configure Environment
+# 8. Configure Environment
 
-Open the `.env` file and replace the default image with:
+Open the `.env` file.
 
+```bash
+vi .env
 ```
+
+Replace:
+
+```text
+CUSTOM_IMAGE=frappe/helpdesk:latest
+```
+
+with
+
+```text
 CUSTOM_IMAGE=custom:16
 ```
 
+Save the file.
+
 ---
 
-# 7. Start the Containers
-
-Launch MariaDB, Redis, Proxy and Frappe services.
+# 9. Start Containers
 
 ```bash
 docker compose \
@@ -166,9 +185,9 @@ docker compose ps
 
 ---
 
-# 8. Create a New Site
+# 10. Create Site
 
-Create a Frappe site and configure the Administrator account.
+Replace **helpdesk.pkdevops.online** with your own domain.
 
 ```bash
 docker compose exec backend \
@@ -177,41 +196,74 @@ bench new-site \
 --admin-password Admin@123 \
 --mariadb-user-host-login-scope="%" \
 helpdesk.pkdevops.online
+```
 
+Verify:
+
+```bash
 docker compose exec backend bench list-sites
 ```
 
 ---
 
-# 9. Install Helpdesk
-
-Install the Helpdesk application on the newly created site and verify the installed apps.
+# 11. Install Helpdesk
 
 ```bash
 docker compose exec backend \
 bench --site helpdesk.pkdevops.online install-app helpdesk
+```
 
+Verify installed applications.
+
+```bash
 docker compose exec backend \
 bench --site helpdesk.pkdevops.online list-apps
 ```
 
 ---
 
-# 10. Set the Default Site
+# 12. Run Migration (Important)
 
-Configure the default site and restart the stack.
+Run migration after installing Helpdesk.
+
+```bash
+docker compose exec backend \
+bench --site helpdesk.pkdevops.online migrate
+```
+
+This initializes Helpdesk correctly and rebuilds the Knowledge Base search index.
+
+**This step helps resolve the following error after a fresh installation:**
+
+```
+500 Internal Server Error
+
+/api/method/helpdesk.api.article.search
+```
+
+---
+
+# 13. Set Default Site
 
 ```bash
 docker compose exec backend \
 bench set-config -g default_site helpdesk.pkdevops.online
+```
 
+Restart containers.
+
+```bash
 docker compose restart
+```
 
+Verify configuration.
+
+```bash
 docker compose exec backend \
 cat sites/common_site_config.json
 ```
 
-Verify the backend.
+Test backend.
 
 ```bash
 curl -H "Host: helpdesk.pkdevops.online" http://127.0.0.1:8080
@@ -219,9 +271,9 @@ curl -H "Host: helpdesk.pkdevops.online" http://127.0.0.1:8080
 
 ---
 
-# 11. Configure Apache Reverse Proxy
+# 14. Configure Apache Reverse Proxy
 
-Create a new virtual host.
+Create a Virtual Host.
 
 ```bash
 sudo nano /etc/apache2/sites-available/helpdesk.pkdevops.online.conf
@@ -245,7 +297,7 @@ Paste:
 </VirtualHost>
 ```
 
-Enable Apache modules and the virtual host.
+Enable Apache modules.
 
 ```bash
 sudo a2enmod proxy proxy_http rewrite headers
@@ -261,15 +313,15 @@ apache2ctl -S
 
 ---
 
-# 12. Enable HTTPS
+# 15. Enable HTTPS
 
-Generate a free SSL certificate from Let's Encrypt.
+Generate a free SSL certificate.
 
 ```bash
 sudo certbot --apache
 ```
 
-Choose your domain and allow automatic HTTP to HTTPS redirection.
+Choose your domain and allow automatic HTTP → HTTPS redirection.
 
 ---
 
@@ -279,7 +331,11 @@ Choose your domain and allow automatic HTTP to HTTPS redirection.
 https://helpdesk.pkdevops.online
 ```
 
-**Login**
+Replace the URL with your own domain.
+
+---
+
+# Default Login
 
 ```
 Username : Administrator
@@ -290,12 +346,71 @@ Password : Admin@123
 
 # Useful Commands
 
+## View running containers
+
 ```bash
 docker compose ps
-docker compose logs -f backend
-docker compose restart
-docker compose down
-docker compose up -d
-docker compose exec backend bench list-sites
-docker compose exec backend bench --site helpdesk.pkdevops.online list-apps
 ```
+
+## View backend logs
+
+```bash
+docker compose logs -f backend
+```
+
+## Restart containers
+
+```bash
+docker compose restart
+```
+
+## Stop containers
+
+```bash
+docker compose down
+```
+
+## Start containers
+
+```bash
+docker compose up -d
+```
+
+## List available sites
+
+```bash
+docker compose exec backend bench list-sites
+```
+
+## List installed apps
+
+```bash
+docker compose exec backend \
+bench --site helpdesk.pkdevops.online list-apps
+```
+
+## Run migrations
+
+```bash
+docker compose exec backend \
+bench --site helpdesk.pkdevops.online migrate
+```
+
+## Check backend
+
+```bash
+curl -H "Host: helpdesk.pkdevops.online" http://127.0.0.1:8080
+```
+
+---
+
+# Included Applications
+
+- Frappe Framework v16
+- Helpdesk
+- Telephony
+- MariaDB
+- Redis
+- Traefik Proxy
+- Apache Reverse Proxy
+- Let's Encrypt SSL
