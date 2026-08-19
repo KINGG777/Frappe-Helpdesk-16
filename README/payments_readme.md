@@ -1,16 +1,24 @@
 # ERPNext + Payments + Razorpay
 
-## 1. Install ERPNext
-
-Create a fresh ERPNext server and site.
-
-Make sure ERPNext is working correctly before installing the Payments app.
+This README explains how to install the Frappe Payments app on ERPNext and configure Razorpay for online payments.
 
 ---
 
-## 2. Install Payments App
+## 1. Install ERPNext
 
-Add the Payments app to `apps.json` using the `develop` branch.
+Create a fresh ERPNext/Frappe server and site.
+
+Make sure ERPNext is running correctly before installing the Payments app.
+
+---
+
+# 2. Install Payments App
+
+There are two ways to install the Payments app.
+
+## Option A — New ERPNext Installation
+
+If you are building a new Docker image, add Payments to `apps.json` using the `develop` branch.
 
 Example:
 
@@ -25,7 +33,7 @@ Example:
 
 Build/deploy the ERPNext image with the Payments app.
 
-Then install the Payments app on the ERPNext site:
+Then install Payments on the ERPNext site:
 
 ```bash
 docker compose exec backend bench --site <YOUR_SITE> install-app payments
@@ -47,19 +55,51 @@ payments
 
 ---
 
-## 3. ERPNext Email Configuration
+## Option B — Existing Running ERPNext
+
+If ERPNext is already running and you want to add Payments without rebuilding the image:
+
+```bash
+docker compose exec backend bench get-app --branch develop https://github.com/frappe/payments
+```
+
+Then install Payments on the site:
+
+```bash
+docker compose exec backend bench --site <YOUR_SITE> install-app payments
+```
+
+Verify:
+
+```bash
+docker compose exec backend bench --site <YOUR_SITE> list-apps
+```
+
+Expected:
+
+```text
+frappe
+erpnext
+payments
+```
+
+> **Note:** With Docker, installing an app using `bench get-app` into a running container may be lost if the container/image is recreated. For a permanent Docker deployment, adding the app to `apps.json` and rebuilding the image is recommended.
+
+---
+
+# 3. ERPNext Email Configuration
 
 Go to:
 
 **ERPNext → Email Account**
 
-Configure the outgoing email account/SMTP.
+Configure your outgoing email account/SMTP.
 
-This email account is used by ERPNext to send Payment Request emails.
+This account is used to send Payment Request emails to customers.
 
 ---
 
-## 4. Razorpay Configuration
+# 4. Razorpay Configuration
 
 Use **Razorpay Test Mode** for testing.
 
@@ -70,11 +110,11 @@ Test API Key
 Test API Secret
 ```
 
-In ERPNext, go to:
+In ERPNext, open:
 
 **Razorpay Settings**
 
-Set:
+Configure:
 
 ```text
 API Key        = Razorpay Test Key
@@ -86,19 +126,19 @@ Save the settings.
 
 ---
 
-## 5. Razorpay Webhook
+# 5. Razorpay Webhook
 
 In the Razorpay Dashboard:
 
 **Test Mode → Webhooks → Add Webhook**
 
-Use this webhook URL:
+Use the following webhook URL:
 
 ```text
 https://helpdesk.pkdevops.online/api/method/payments.payment_gateways.doctype.razorpay_settings.webhook.razorpay_webhook
 ```
 
-Set the webhook secret to the **same secret** configured in:
+Set the webhook secret to the **same value** used in:
 
 **ERPNext → Razorpay Settings → Webhook Secret**
 
@@ -106,9 +146,9 @@ Save the webhook.
 
 ---
 
-## 6. ERPNext Payment Gateway
+# 6. ERPNext Payment Gateway
 
-Configure the Razorpay Payment Gateway in ERPNext:
+In ERPNext configure:
 
 **Payment Gateway → Razorpay**
 
@@ -124,7 +164,7 @@ Currency: INR
 
 ---
 
-## 7. Payment Request Email
+# 7. Payment Request Email
 
 Create a Sales Invoice.
 
@@ -132,7 +172,9 @@ Then:
 
 **Sales Invoice → Create → Payment Request**
 
-The Payment Request email should contain the generated payment URL:
+The Payment Request email should contain the payment URL.
+
+Example:
 
 ```html
 <p>Please click the link below to make your payment.</p>
@@ -142,9 +184,9 @@ The Payment Request email should contain the generated payment URL:
 </p>
 ```
 
-Do not hard-code a payment token or payment URL.
-
 The `payment_url` is generated dynamically for each Payment Request.
+
+Do not hard-code a payment token or payment URL.
 
 ---
 
@@ -162,13 +204,15 @@ Item: Laptop
 Amount: ₹200
 ```
 
+---
+
 ## Step 2 — Create Payment Request
 
 From the Sales Invoice:
 
 **Create → Payment Request**
 
-Use:
+Configure:
 
 ```text
 Payment Request Type: Inward
@@ -177,6 +221,10 @@ Reference Doctype: Sales Invoice
 Reference Name: <Sales Invoice>
 Amount: ₹200
 ```
+
+Submit the Payment Request.
+
+---
 
 ## Step 3 — Send Payment Email
 
@@ -188,7 +236,9 @@ The customer should receive an email containing:
 Click Here to Pay
 ```
 
-The email is processed automatically by ERPNext's email queue.
+ERPNext automatically processes the email through the Email Queue.
+
+---
 
 ## Step 4 — Open Payment Link
 
@@ -200,13 +250,19 @@ Click Here to Pay
 
 Razorpay Checkout should open.
 
+---
+
 ## Step 5 — Make Test Payment
 
 Complete the payment using **Razorpay Test Mode**.
 
+Do not use a real payment/card for testing.
+
+---
+
 ## Step 6 — Verify Payment
 
-After the test payment, check:
+After completing the test payment, check:
 
 ```text
 Payment Request
@@ -268,3 +324,19 @@ Razorpay
 ```text
 https://helpdesk.pkdevops.online/api/method/payments.payment_gateways.doctype.razorpay_settings.webhook.razorpay_webhook
 ```
+
+---
+
+# 11. Production
+
+After testing is completed successfully:
+
+```text
+Razorpay Test Mode
+        ↓
+Razorpay Live Mode
+```
+
+Replace the Test API credentials with the Live API credentials and configure the Live webhook separately.
+
+Never commit API secrets or webhook secrets to GitHub.
